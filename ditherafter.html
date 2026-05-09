@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AfterDither HTML — Lottie/TGS Export</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111318;
+      --panel: #1b1f2a;
+      --panel-2: #242a36;
+      --text: #f2f5fa;
+      --muted: #aab3c5;
+      --accent: #72d6ff;
+      --danger: #ff7a90;
+      --ok: #88e097;
+      --line: #343b4c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+      background: #0d0f14;
+    }
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    header p { margin: 0; color: var(--muted); }
+    main {
+      display: grid;
+      grid-template-columns: minmax(300px, 380px) 1fr;
+      min-height: calc(100vh - 82px);
+    }
+    aside {
+      padding: 18px;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      overflow: auto;
+    }
+    .stage {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      background:
+        linear-gradient(45deg, #171a22 25%, transparent 25%) 0 0 / 28px 28px,
+        linear-gradient(45deg, transparent 75%, #171a22 75%) 0 0 / 28px 28px,
+        linear-gradient(45deg, transparent 75%, #171a22 75%) 14px 14px / 28px 28px,
+        linear-gradient(45deg, #171a22 25%, #101219 25%) 14px 14px / 28px 28px;
+    }
+    .canvas-wrap {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      overflow: auto;
+    }
+    canvas {
+      image-rendering: pixelated;
+      max-width: 100%;
+      max-height: calc(100vh - 170px);
+      background: transparent;
+      box-shadow: 0 16px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.1);
+      cursor: crosshair;
+    }
+    .row { margin: 0 0 15px; }
+    label { display: block; margin: 0 0 7px; font-weight: 650; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 5px; }
+    input[type="file"], select, input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      color: var(--text);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    input[type="range"] { width: 100%; }
+    .range-line {
+      display: grid;
+      grid-template-columns: 1fr 78px;
+      gap: 10px;
+      align-items: center;
+    }
+    .check-line {
+      display: flex;
+      gap: 9px;
+      align-items: flex-start;
+      color: var(--text);
+    }
+    .check-line input { margin-top: 3px; }
+    button {
+      width: 100%;
+      padding: 10px 12px;
+      margin: 6px 0 0;
+      border: 0;
+      border-radius: 9px;
+      color: #061018;
+      background: var(--accent);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.secondary { background: #d6deef; }
+    button.small { padding: 8px 10px; font-size: 12px; }
+    .button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    button:disabled { cursor: not-allowed; filter: grayscale(1) brightness(.7); }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 14px;
+      border-top: 1px solid var(--line);
+      background: rgba(13,15,20,.86);
+    }
+    .stat {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(27,31,42,.9);
+    }
+    .stat b { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+    .stat span { font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--danger); }
+    .note {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(36,42,54,.8);
+      color: var(--muted);
+    }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AfterDither HTML</h1>
+    <p>Быстрое canvas-превью, alpha-aware dithering, экспорт в Lottie JSON и gzipped .tgs.</p>
+  </header>
+
+  <main>
+    <aside>
+      <div class="row">
+        <label for="file">Изображение</label>
+        <input id="file" type="file" accept="image/*" />
+        <div class="hint">PNG с прозрачностью поддерживается: полностью прозрачные области не рисуются.</div>
+      </div>
+
+      <div class="row">
+        <label>Pixel Size</label>
+        <div class="range-line"><input id="pixelSize" type="range" min="1" max="64" step="1" value="8" /><input id="pixelSizeNum" type="number" min="1" max="256" step="1" value="8" /></div>
+        <div class="hint">Размер одного dither-квадрата в пикселях выходного Lottie.</div>
+      </div>
+
+      <div class="row">
+        <label>Brightness</label>
+        <div class="range-line"><input id="brightness" type="range" min="-100" max="100" step="1" value="0" /><input id="brightnessNum" type="number" min="-100" max="100" step="1" value="0" /></div>
+      </div>
+
+      <div class="row">
+        <label>Contrast</label>
+        <div class="range-line"><input id="contrast" type="range" min="-254" max="254" step="1" value="0" /><input id="contrastNum" type="number" min="-254" max="254" step="1" value="0" /></div>
+      </div>
+
+      <div class="row">
+        <label>Threshold</label>
+        <div class="range-line"><input id="threshold" type="range" min="1" max="99" step="1" value="50" /><input id="thresholdNum" type="number" min="1" max="99" step="1" value="50" /></div>
+      </div>
+
+      <div class="row">
+        <label>Preview / export size</label>
+        <div class="range-line"><input id="previewWidth" type="number" min="16" max="4096" step="1" value="512" /><input id="previewHeight" type="number" min="16" max="4096" step="1" value="512" /></div>
+        <div class="hint">Размер окна превью и Lottie/TGS композиции. По умолчанию 512×512.</div>
+      </div>
+
+      <div class="row">
+        <label>Image position X / Y</label>
+        <div class="range-line"><input id="imageX" type="number" min="-4096" max="4096" step="1" value="0" /><input id="imageY" type="number" min="-4096" max="4096" step="1" value="0" /></div>
+        <div class="hint">Положение исходной картинки внутри превью перед дизерингом. Можно также перетаскивать картинку мышью, когда ручное редактирование выключено.</div>
+      </div>
+
+      <div class="row">
+        <label>Image scale</label>
+        <div class="range-line"><input id="imageScale" type="range" min="0.05" max="16" step="0.05" value="1" /><input id="imageScaleNum" type="number" min="0.01" max="64" step="0.05" value="1" /></div>
+        <div class="hint">Масштаб исходной картинки внутри превью.</div>
+      </div>
+
+      <div class="row check-line">
+        <input id="showSource" type="checkbox" checked />
+        <label for="showSource">Показывать исходную картинку под дизерингом</label>
+      </div>
+
+      <div class="row check-line">
+        <input id="useTransformScale" type="checkbox" checked />
+        <label for="useTransformScale">Use image transform scale for Pixel Size</label>
+      </div>
+
+      <div class="row check-line">
+        <input id="transparentOnly" type="checkbox" checked />
+        <label for="transparentOnly">Игнорировать прозрачные пиксели</label>
+      </div>
+
+      <div class="row check-line">
+        <input id="mergeDiagonal" type="checkbox" checked />
+        <label for="mergeDiagonal">Сшивать касания углами в непрерывные paths где возможно</label>
+      </div>
+
+      <div class="row">
+        <label for="previewBg">Фон превью</label>
+        <select id="previewBg">
+          <option value="checker" selected>Шахматка</option>
+          <option value="white">Белый</option>
+          <option value="black">Чёрный</option>
+          <option value="gray">Серый</option>
+          <option value="blue">Синий</option>
+          <option value="transparent">Прозрачный/тёмный UI</option>
+        </select>
+      </div>
+
+      <div class="row check-line">
+        <input id="eraserEnabled" type="checkbox" />
+        <label for="eraserEnabled">Ручное редактирование: контур показывает, где сотрутся или дорисуются клетки</label>
+      </div>
+
+      <div class="row">
+        <label for="editTool">Edit tool</label>
+        <select id="editTool">
+          <option value="erase" selected>Ластик — стирать квадраты</option>
+          <option value="draw">Карандаш — дорисовывать квадраты</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>Brush Size</label>
+        <div class="range-line"><input id="eraserSize" type="range" min="1" max="20" step="1" value="1" /><input id="eraserSizeNum" type="number" min="1" max="64" step="1" value="1" /></div>
+        <div class="hint">Размер квадратной кисти в актуальных dither-клетках. После изменения параметров дизеринга ручные правки сбрасываются.</div>
+      </div>
+
+      <div class="row button-grid">
+        <button id="undoErase" class="secondary small" disabled>Undo erase</button>
+        <button id="clearErase" class="secondary small" disabled>Clear edits</button>
+      </div>
+
+      <div class="row">
+        <label>FPS / Duration</label>
+        <div class="range-line"><input id="fps" type="number" min="1" max="120" step="1" value="30" /><input id="duration" type="number" min="1" max="300" step="1" value="60" /></div>
+        <div class="hint">Duration — количество кадров в статичном Lottie.</div>
+      </div>
+
+      <button id="downloadJson" disabled>Скачать .json Lottie</button>
+      <button id="downloadTgs" class="secondary" disabled>Скачать .tgs gzip</button>
+      <button id="copyAeJsx" class="secondary" disabled>Copy AE JSX для импорта</button>
+      <button id="downloadAeJsx" class="secondary" disabled>Скачать AE JSX</button>
+      <div class="note row" id="note">Загрузи изображение, затем крути настройки — превью и расчёт веса обновляются автоматически.</div>
+    </aside>
+
+    <section class="stage">
+      <div class="canvas-wrap"><canvas id="preview" width="512" height="512"></canvas></div>
+      <div class="stats">
+        <div class="stat"><b>Сетка</b><span id="gridStat">—</span></div>
+        <div class="stat"><b>Чёрных клеток</b><span id="blackStat">—</span></div>
+        <div class="stat"><b>Groups / paths</b><span id="groupStat">—</span></div>
+        <div class="stat"><b>Lottie JSON</b><span id="jsonStat">—</span></div>
+        <div class="stat"><b>TGS gzip</b><span id="tgsStat">—</span></div>
+        <div class="stat"><b>Telegram 64 KB</b><span id="limitStat">—</span></div>
+      </div>
+    </section>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+
+  var TRANSPARENT_ALPHA_EPSILON = 1;
+  var TELEGRAM_TGS_LIMIT = 64 * 1024;
+  var state = {
+    image: null,
+    imageName: 'afterdither',
+    sourceCanvas: document.createElement('canvas'),
+    previewData: null,
+    lottieText: '',
+    aeJsxText: '',
+    tgsBlob: null,
+    tgsBytes: 0,
+    updateToken: 0,
+    eraseMask: null,
+    eraseHistory: [],
+    pointer: { visible: false, col: 0, row: 0 },
+    dragImage: null
+  };
+
+  var el = {
+    file: document.getElementById('file'),
+    preview: document.getElementById('preview'),
+    pixelSize: document.getElementById('pixelSize'),
+    pixelSizeNum: document.getElementById('pixelSizeNum'),
+    brightness: document.getElementById('brightness'),
+    brightnessNum: document.getElementById('brightnessNum'),
+    contrast: document.getElementById('contrast'),
+    contrastNum: document.getElementById('contrastNum'),
+    threshold: document.getElementById('threshold'),
+    thresholdNum: document.getElementById('thresholdNum'),
+    previewWidth: document.getElementById('previewWidth'),
+    previewHeight: document.getElementById('previewHeight'),
+    imageX: document.getElementById('imageX'),
+    imageY: document.getElementById('imageY'),
+    imageScale: document.getElementById('imageScale'),
+    imageScaleNum: document.getElementById('imageScaleNum'),
+    showSource: document.getElementById('showSource'),
+    useTransformScale: document.getElementById('useTransformScale'),
+    transparentOnly: document.getElementById('transparentOnly'),
+    mergeDiagonal: document.getElementById('mergeDiagonal'),
+    previewBg: document.getElementById('previewBg'),
+    eraserEnabled: document.getElementById('eraserEnabled'),
+    editTool: document.getElementById('editTool'),
+    eraserSize: document.getElementById('eraserSize'),
+    eraserSizeNum: document.getElementById('eraserSizeNum'),
+    undoErase: document.getElementById('undoErase'),
+    clearErase: document.getElementById('clearErase'),
+    fps: document.getElementById('fps'),
+    duration: document.getElementById('duration'),
+    downloadJson: document.getElementById('downloadJson'),
+    downloadTgs: document.getElementById('downloadTgs'),
+    copyAeJsx: document.getElementById('copyAeJsx'),
+    downloadAeJsx: document.getElementById('downloadAeJsx'),
+    note: document.getElementById('note'),
+    gridStat: document.getElementById('gridStat'),
+    blackStat: document.getElementById('blackStat'),
+    groupStat: document.getElementById('groupStat'),
+    jsonStat: document.getElementById('jsonStat'),
+    tgsStat: document.getElementById('tgsStat'),
+    limitStat: document.getElementById('limitStat')
+  };
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return '—';
+    if (bytes < 1024) return bytes + ' B';
+    return (bytes / 1024).toFixed(bytes < 1024 * 1024 ? 1 : 2) + (bytes < 1024 * 1024 ? ' KB' : ' MB');
+  }
+
+  function baseName(name) {
+    return String(name || 'afterdither').replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_') || 'afterdither';
+  }
+
+  function syncRange(range, number) {
+    function fromRange() {
+      number.value = range.value;
+      scheduleUpdate();
+    }
+    function fromNumber() {
+      var value = clamp(parseFloat(number.value) || parseFloat(range.value), parseFloat(number.min), parseFloat(number.max));
+      number.value = value;
+      range.value = clamp(value, parseFloat(range.min), parseFloat(range.max));
+      scheduleUpdate();
+    }
+    range.addEventListener('input', fromRange);
+    number.addEventListener('change', fromNumber);
+  }
+
+  function options() {
+    return {
+      pixelSize: clamp(parseFloat(el.pixelSizeNum.value) || 8, 1, 256),
+      brightness: clamp(parseFloat(el.brightnessNum.value) || 0, -100, 100),
+      contrast: clamp(parseFloat(el.contrastNum.value) || 0, -254, 254),
+      threshold: clamp(parseFloat(el.thresholdNum.value) || 50, 1, 99) / 100,
+      previewWidth: clamp(parseInt(el.previewWidth.value, 10) || 512, 16, 4096),
+      previewHeight: clamp(parseInt(el.previewHeight.value, 10) || 512, 16, 4096),
+      imageX: parseFloat(el.imageX.value) || 0,
+      imageY: parseFloat(el.imageY.value) || 0,
+      imageScale: clamp(parseFloat(el.imageScaleNum.value) || 1, 0.01, 64),
+      showSource: el.showSource.checked,
+      useTransformScale: el.useTransformScale.checked,
+      transparentOnly: el.transparentOnly.checked,
+      mergeDiagonal: el.mergeDiagonal.checked,
+      eraserSize: clamp(parseInt(el.eraserSizeNum.value, 10) || 1, 1, 64),
+      fps: clamp(parseInt(el.fps.value, 10) || 30, 1, 120),
+      duration: clamp(parseInt(el.duration.value, 10) || 60, 1, 300)
+    };
+  }
+
+  function adjustedLuma(r, g, b, brightness, contrast) {
+    var y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    y += brightness / 100;
+    var factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+    return clamp(factor * (y - 0.5) + 0.5, 0, 1);
+  }
+
+  function ditherImage(opts) {
+    var source = state.sourceCanvas;
+    var width = source.width;
+    var height = source.height;
+    var outputWidth = opts.previewWidth;
+    var outputHeight = opts.previewHeight;
+    var visualCell = opts.useTransformScale ? opts.pixelSize : opts.pixelSize * opts.imageScale;
+    visualCell = Math.max(1, visualCell);
+    var cols = Math.ceil(outputWidth / visualCell);
+    var rows = Math.ceil(outputHeight / visualCell);
+    var ctx = source.getContext('2d', { willReadFrequently: true });
+    var imageData = ctx.getImageData(0, 0, width, height).data;
+    var values = [];
+    var alphaMask = [];
+    var black = [];
+    var blackCount = 0;
+
+    for (var r = 0; r < rows; r++) {
+      values[r] = [];
+      alphaMask[r] = [];
+      black[r] = [];
+      for (var c = 0; c < cols; c++) {
+        var ox = c * visualCell + visualCell / 2;
+        var oy = r * visualCell + visualCell / 2;
+        var sxFloat = (ox - opts.imageX) / opts.imageScale;
+        var syFloat = (oy - opts.imageY) / opts.imageScale;
+        var inside = sxFloat >= 0 && syFloat >= 0 && sxFloat < width && syFloat < height;
+        var opaque = false;
+        var luma = 1;
+        if (inside) {
+          var sx = Math.min(width - 1, Math.max(0, Math.floor(sxFloat)));
+          var sy = Math.min(height - 1, Math.max(0, Math.floor(syFloat)));
+          var index = (sy * width + sx) * 4;
+          var alpha = imageData[index + 3];
+          opaque = !opts.transparentOnly || alpha > TRANSPARENT_ALPHA_EPSILON;
+          if (opaque) luma = adjustedLuma(imageData[index], imageData[index + 1], imageData[index + 2], opts.brightness, opts.contrast);
+        }
+        alphaMask[r][c] = opaque;
+        values[r][c] = luma;
+        black[r][c] = false;
+      }
+    }
+
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++) {
+        if (!alphaMask[r][c]) continue;
+        var oldPixel = clamp(values[r][c], 0, 1);
+        var newPixel = oldPixel < opts.threshold ? 0 : 1;
+        black[r][c] = newPixel === 0;
+        if (black[r][c]) blackCount++;
+        var err = oldPixel - newPixel;
+        if (c + 1 < cols && alphaMask[r][c + 1]) values[r][c + 1] += err * 7 / 16;
+        if (r + 1 < rows) {
+          if (c > 0 && alphaMask[r + 1][c - 1]) values[r + 1][c - 1] += err * 3 / 16;
+          if (alphaMask[r + 1][c]) values[r + 1][c] += err * 5 / 16;
+          if (c + 1 < cols && alphaMask[r + 1][c + 1]) values[r + 1][c + 1] += err * 1 / 16;
+        }
+      }
+    }
+
+    return {
+      black: black,
+      cols: cols,
+      rows: rows,
+      width: outputWidth,
+      height: outputHeight,
+      cell: visualCell,
+      blackCount: blackCount,
+      imageX: opts.imageX,
+      imageY: opts.imageY,
+      imageScale: opts.imageScale
+    };
+  }
+
+  function makeEmptyEraseMask(rows, cols) {
+    var mask = [];
+    for (var r = 0; r < rows; r++) {
+      mask[r] = [];
+      for (var c = 0; c < cols; c++) mask[r][c] = null;
+    }
+    return mask;
+  }
+
+  function ensureEraseMask(data) {
+    if (!state.eraseMask || state.eraseMask.length !== data.rows || !state.eraseMask[0] || state.eraseMask[0].length !== data.cols) {
+      state.eraseMask = makeEmptyEraseMask(data.rows, data.cols);
+      state.eraseHistory = [];
+    }
+  }
+
+  function applyEraseMask(data) {
+    ensureEraseMask(data);
+    var blackCount = 0;
+    for (var r = 0; r < data.rows; r++) {
+      for (var c = 0; c < data.cols; c++) {
+        if (state.eraseMask[r][c] !== null) data.black[r][c] = state.eraseMask[r][c] === 1;
+        if (data.black[r][c]) blackCount++;
+      }
+    }
+    data.blackCount = blackCount;
+  }
+
+  function resetEdits() {
+    state.eraseMask = null;
+    state.eraseHistory = [];
+    el.undoErase.disabled = true;
+    el.clearErase.disabled = true;
+  }
+
+  function keyFor(c, r) {
+    return c + ',' + r;
+  }
+
+  function collectComponents(black, includeDiagonal) {
+    var rows = black.length;
+    var cols = rows ? black[0].length : 0;
+    var seen = Object.create(null);
+    var comps = [];
+    var dirs = includeDiagonal ? [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]] : [[0,-1],[-1,0],[1,0],[0,1]];
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var k = keyFor(c, r);
+        if (!black[r][c] || seen[k]) continue;
+        var stack = [{ c: c, r: r }];
+        var cells = [];
+        seen[k] = true;
+        while (stack.length) {
+          var cur = stack.pop();
+          cells.push(cur);
+          for (var d = 0; d < dirs.length; d++) {
+            var nc = cur.c + dirs[d][0];
+            var nr = cur.r + dirs[d][1];
+            var nk = keyFor(nc, nr);
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && black[nr][nc] && !seen[nk]) {
+              seen[nk] = true;
+              stack.push({ c: nc, r: nr });
+            }
+          }
+        }
+        comps.push(cells);
+      }
+    }
+    return comps;
+  }
+
+  function splitFourConnected(cells) {
+    var cellSet = Object.create(null);
+    cells.forEach(function (cell) { cellSet[keyFor(cell.c, cell.r)] = true; });
+    var seen = Object.create(null);
+    var islands = [];
+    var dirs = [[0,-1],[-1,0],[1,0],[0,1]];
+    for (var i = 0; i < cells.length; i++) {
+      var k = keyFor(cells[i].c, cells[i].r);
+      if (seen[k]) continue;
+      var stack = [cells[i]];
+      var island = [];
+      seen[k] = true;
+      while (stack.length) {
+        var cur = stack.pop();
+        island.push(cur);
+        for (var d = 0; d < dirs.length; d++) {
+          var nc = cur.c + dirs[d][0];
+          var nr = cur.r + dirs[d][1];
+          var nk = keyFor(nc, nr);
+          if (cellSet[nk] && !seen[nk]) {
+            seen[nk] = true;
+            stack.push({ c: nc, r: nr });
+          }
+        }
+      }
+      islands.push(island);
+    }
+    return islands;
+  }
+
+  function edgeKey(a, b) {
+    return a.x + ',' + a.y + '>' + b.x + ',' + b.y;
+  }
+
+  function reverseEdgeKey(a, b) {
+    return b.x + ',' + b.y + '>' + a.x + ',' + a.y;
+  }
+
+  function addEdge(edges, a, b) {
+    var rev = reverseEdgeKey(a, b);
+    if (edges[rev]) delete edges[rev];
+    else edges[edgeKey(a, b)] = { a: a, b: b };
+  }
+
+  function islandToPaths(island, cellSize) {
+    var edges = Object.create(null);
+    island.forEach(function (cell) {
+      var c = cell.c;
+      var r = cell.r;
+      addEdge(edges, { x: c, y: r }, { x: c + 1, y: r });
+      addEdge(edges, { x: c + 1, y: r }, { x: c + 1, y: r + 1 });
+      addEdge(edges, { x: c + 1, y: r + 1 }, { x: c, y: r + 1 });
+      addEdge(edges, { x: c, y: r + 1 }, { x: c, y: r });
+    });
+
+    var outgoing = Object.create(null);
+    var keys = Object.keys(edges);
+    keys.forEach(function (ek) {
+      var start = edges[ek].a.x + ',' + edges[ek].a.y;
+      if (!outgoing[start]) outgoing[start] = [];
+      outgoing[start].push(ek);
+    });
+
+    function pickNextEdge(candidates) {
+      // Prefer the most recently-added unused edge at a junction. This lets
+      // corner-touching squares jump through the shared vertex and continue as
+      // one self-touching outline instead of closing each square separately.
+      for (var j = candidates.length - 1; j >= 0; j--) {
+        if (!used[candidates[j]]) return edges[candidates[j]];
+      }
+      return null;
+    }
+
+    var used = Object.create(null);
+    var paths = [];
+    keys.forEach(function (startKey) {
+      if (used[startKey]) return;
+      var e = edges[startKey];
+      var start = e.a.x + ',' + e.a.y;
+      var current = e;
+      var verts = [];
+      while (current && !used[edgeKey(current.a, current.b)]) {
+        var ck = edgeKey(current.a, current.b);
+        used[ck] = true;
+        verts.push([current.a.x * cellSize, current.a.y * cellSize]);
+        var nextStart = current.b.x + ',' + current.b.y;
+        var candidates = outgoing[nextStart] || [];
+        current = pickNextEdge(candidates);
+        if (nextStart === start && !current) break;
+      }
+      if (verts.length >= 3) paths.push(verts);
+    });
+    return paths;
+  }
+
+  function shapePath(vertices) {
+    var zeroTangents = vertices.map(function () { return [0, 0]; });
+    return {
+      ty: 'sh',
+      ks: {
+        a: 0,
+        k: {
+          i: zeroTangents,
+          o: zeroTangents,
+          v: vertices,
+          c: true
+        }
+      }
+    };
+  }
+
+  function buildLottie(data, opts) {
+    var components = collectComponents(data.black, opts.mergeDiagonal);
+    var groups = [];
+    for (var i = 0; i < components.length; i++) {
+      var groupItems = [];
+      var islands = opts.mergeDiagonal ? [components[i]] : splitFourConnected(components[i]);
+      for (var j = 0; j < islands.length; j++) {
+        var paths = islandToPaths(islands[j], data.cell);
+        for (var p = 0; p < paths.length; p++) {
+          groupItems.push(shapePath(paths[p]));
+        }
+      }
+      if (groupItems.length) {
+        groupItems.push({ ty: 'fl', c: { a: 0, k: [0, 0, 0, 1] }, o: { a: 0, k: 100 }, r: 1 });
+        groupItems.push({
+          ty: 'tr',
+          p: { a: 0, k: [0, 0] },
+          a: { a: 0, k: [0, 0] },
+          s: { a: 0, k: [100, 100] },
+          r: { a: 0, k: 0 },
+          o: { a: 0, k: 100 },
+          sk: { a: 0, k: 0 },
+          sa: { a: 0, k: 0 }
+        });
+        groups.push({ ty: 'gr', nm: 'Cluster ' + (i + 1), it: groupItems });
+      }
+    }
+
+    return {
+      v: '5.7.4',
+      fr: opts.fps,
+      ip: 0,
+      op: opts.duration,
+      w: data.width,
+      h: data.height,
+      nm: 'AfterDither_' + state.imageName,
+      ddd: 0,
+      assets: [],
+      layers: [{
+        ddd: 0,
+        ind: 1,
+        ty: 4,
+        nm: 'Black Dither',
+        sr: 1,
+        ks: {
+          o: { a: 0, k: 100 },
+          r: { a: 0, k: 0 },
+          p: { a: 0, k: [0, 0, 0] },
+          a: { a: 0, k: [0, 0, 0] },
+          s: { a: 0, k: [100, 100, 100] }
+        },
+        ao: 0,
+        shapes: groups,
+        ip: 0,
+        op: opts.duration,
+        st: 0,
+        bm: 0
+      }]
+    };
+  }
+
+  function drawPreviewBackground(ctx, width, height) {
+    var bg = el.previewBg.value;
+    ctx.clearRect(0, 0, width, height);
+    if (bg === 'transparent') return;
+    if (bg === 'checker') {
+      var tile = Math.max(8, Math.round(Math.min(width, height) / 32));
+      for (var y = 0; y < height; y += tile) {
+        for (var x = 0; x < width; x += tile) {
+          ctx.fillStyle = ((x / tile + y / tile) % 2 === 0) ? '#f3f3f3' : '#bfc6d1';
+          ctx.fillRect(x, y, tile, tile);
+        }
+      }
+      return;
+    }
+    ctx.fillStyle = bg === 'white' ? '#fff' : bg === 'black' ? '#000' : bg === 'blue' ? '#3178ff' : '#8b8f99';
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  function drawEditCursor(ctx, data) {
+    if (!el.eraserEnabled.checked || !state.pointer.visible || !data) return;
+    var size = options().eraserSize;
+    var half = Math.floor(size / 2);
+    var x = (state.pointer.col - half) * data.cell;
+    var y = (state.pointer.row - half) * data.cell;
+    var w = size * data.cell;
+    var h = size * data.cell;
+    ctx.save();
+    ctx.lineWidth = Math.max(1, Math.min(4, data.cell / 5));
+    ctx.setLineDash([Math.max(3, data.cell / 2), Math.max(3, data.cell / 3)]);
+    ctx.strokeStyle = el.editTool.value === 'draw' ? '#00ff66' : '#ff3355';
+    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 1.5, y + 1.5, Math.max(0, w - 2), Math.max(0, h - 2));
+    ctx.restore();
+  }
+
+  function drawPreview(data) {
+    var canvas = el.preview;
+    canvas.width = data.width;
+    canvas.height = data.height;
+    var ctx = canvas.getContext('2d');
+    drawPreviewBackground(ctx, canvas.width, canvas.height);
+    if (state.image && options().showSource) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(state.image, data.imageX, data.imageY, state.sourceCanvas.width * data.imageScale, state.sourceCanvas.height * data.imageScale);
+      ctx.restore();
+    }
+    ctx.fillStyle = '#000';
+    if (el.previewBg.value === 'black') ctx.fillStyle = '#fff';
+    for (var r = 0; r < data.rows; r++) {
+      for (var c = 0; c < data.cols; c++) {
+        if (data.black[r][c]) ctx.fillRect(c * data.cell, r * data.cell, data.cell, data.cell);
+      }
+    }
+    drawEditCursor(ctx, data);
+  }
+
+  function jsString(value) {
+    return JSON.stringify(String(value));
+  }
+
+  function buildAeJsx(data, opts) {
+    var lottie = JSON.parse(state.lottieText || JSON.stringify(buildLottie(data, opts)));
+    var shapesJson = JSON.stringify(lottie.layers[0].shapes || []);
+    return '(function(){\n' +
+      'var comp = app.project && app.project.activeItem;\n' +
+      'if (!(comp instanceof CompItem)) { alert("Open a comp before running AfterDither import."); return; }\n' +
+      'var data = ' + shapesJson + ';\n' +
+      'var w = ' + JSON.stringify(data.width) + ', h = ' + JSON.stringify(data.height) + ';\n' +
+      'function makeShape(k){ var s = new Shape(); s.vertices = k.v; s.inTangents = k.i; s.outTangents = k.o; s.closed = !!k.c; return s; }\n' +
+      'app.beginUndoGroup("Import AfterDither HTML Shapes");\n' +
+      'var layer = comp.layers.addShape(); layer.name = ' + jsString('AfterDither_HTML_' + state.imageName) + ';\n' +
+      'var tr = layer.property("ADBE Transform Group"); tr.property("ADBE Anchor Point").setValue([w/2,h/2]); tr.property("ADBE Position").setValue([comp.width/2,comp.height/2]);\n' +
+      'var root = layer.property("ADBE Root Vectors Group");\n' +
+      'for (var i=0; i<data.length; i++) {\n' +
+      '  var g = root.addProperty("ADBE Vector Group"); g.name = data[i].nm || ("Cluster " + (i+1));\n' +
+      '  var vg = g.property("ADBE Vectors Group");\n' +
+      '  for (var j=0; j<data[i].it.length; j++) { var item = data[i].it[j]; if (item.ty === "sh") { var p = vg.addProperty("ADBE Vector Shape - Group"); p.property("ADBE Vector Shape").setValue(makeShape(item.ks.k)); } }\n' +
+      '  var fill = vg.addProperty("ADBE Vector Graphic - Fill"); fill.property("ADBE Vector Fill Color").setValue([0,0,0]); fill.property("ADBE Vector Fill Opacity").setValue(100);\n' +
+      '}\n' +
+      'app.endUndoGroup();\n' +
+      '}());\n';
+  }
+
+  function gzipString(text) {
+    if (!('CompressionStream' in window)) return Promise.resolve(null);
+    var stream = new Blob([text], { type: 'application/json' }).stream().pipeThrough(new CompressionStream('gzip'));
+    return new Response(stream).blob();
+  }
+
+  function updateStats(data, lottieText, gzipBlob) {
+    el.gridStat.textContent = data.cols + ' × ' + data.rows;
+    el.blackStat.textContent = String(data.blackCount);
+    var shapeGroups = JSON.parse(lottieText).layers[0].shapes || [];
+    var pathCount = 0;
+    shapeGroups.forEach(function (group) {
+      (group.it || []).forEach(function (item) { if (item.ty === 'sh') pathCount++; });
+    });
+    el.groupStat.textContent = shapeGroups.length + ' / ' + pathCount;
+    el.jsonStat.textContent = formatBytes(new Blob([lottieText]).size);
+    if (gzipBlob) {
+      el.tgsStat.textContent = formatBytes(gzipBlob.size);
+      el.limitStat.textContent = gzipBlob.size <= TELEGRAM_TGS_LIMIT ? 'OK' : 'слишком большой';
+      el.limitStat.className = gzipBlob.size <= TELEGRAM_TGS_LIMIT ? 'ok' : 'warn';
+    } else {
+      el.tgsStat.textContent = 'нет CompressionStream';
+      el.limitStat.textContent = '—';
+      el.limitStat.className = '';
+    }
+  }
+
+  function scheduleUpdate() {
+    window.clearTimeout(state.timer);
+    state.timer = window.setTimeout(update, 80);
+  }
+
+  function update() {
+    var token = ++state.updateToken;
+    if (!state.image) return;
+    el.note.textContent = 'Считаю превью и вес TGS…';
+    window.setTimeout(function () {
+      if (token !== state.updateToken) return;
+      try {
+        var opts = options();
+        var data = ditherImage(opts);
+        applyEraseMask(data);
+        var lottie = buildLottie(data, opts);
+        var text = JSON.stringify(lottie);
+        state.lottieText = text;
+        state.aeJsxText = buildAeJsx(data, opts);
+        drawPreview(data);
+        gzipString(text).then(function (blob) {
+          if (token !== state.updateToken) return;
+          state.previewData = data;
+          state.lottieText = text;
+          state.aeJsxText = buildAeJsx(data, opts);
+          state.tgsBlob = blob;
+          state.tgsBytes = blob ? blob.size : 0;
+          updateStats(data, text, blob);
+          el.downloadJson.disabled = false;
+          el.downloadTgs.disabled = !blob;
+          el.copyAeJsx.disabled = false;
+          el.downloadAeJsx.disabled = false;
+          el.undoErase.disabled = state.eraseHistory.length === 0;
+          el.clearErase.disabled = state.eraseHistory.length === 0;
+          el.note.textContent = blob ? 'Готово. TGS вес пересчитан по gzip.' : 'Готово. Для .tgs нужен браузер с CompressionStream (Chrome/Edge/Safari новые версии).';
+        });
+      } catch (err) {
+        el.note.textContent = 'Ошибка: ' + err.message;
+        console.error(err);
+      }
+    }, 0);
+  }
+
+  function loadImage(file) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      state.image = img;
+      state.imageName = baseName(file.name);
+      state.sourceCanvas.width = img.naturalWidth || img.width;
+      state.sourceCanvas.height = img.naturalHeight || img.height;
+      state.sourceCanvas.getContext('2d').clearRect(0, 0, state.sourceCanvas.width, state.sourceCanvas.height);
+      state.sourceCanvas.getContext('2d').drawImage(img, 0, 0);
+      var fit = Math.min(1, options().previewWidth / state.sourceCanvas.width, options().previewHeight / state.sourceCanvas.height);
+      el.imageScale.value = fit;
+      el.imageScaleNum.value = fit.toFixed(2);
+      el.imageX.value = Math.round((options().previewWidth - state.sourceCanvas.width * fit) / 2);
+      el.imageY.value = Math.round((options().previewHeight - state.sourceCanvas.height * fit) / 2);
+      resetEdits();
+      scheduleUpdate();
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      el.note.textContent = 'Не удалось загрузить изображение.';
+    };
+    img.src = url;
+  }
+
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  syncRange(el.pixelSize, el.pixelSizeNum);
+  syncRange(el.brightness, el.brightnessNum);
+  syncRange(el.contrast, el.contrastNum);
+  syncRange(el.threshold, el.thresholdNum);
+  syncRange(el.imageScale, el.imageScaleNum);
+  syncRange(el.eraserSize, el.eraserSizeNum);
+
+  [el.pixelSize, el.pixelSizeNum, el.brightness, el.brightnessNum, el.contrast, el.contrastNum, el.threshold, el.thresholdNum, el.previewWidth, el.previewHeight, el.imageX, el.imageY, el.imageScale, el.imageScaleNum, el.transparentOnly, el.useTransformScale].forEach(function (control) {
+    control.addEventListener('input', resetEdits);
+    control.addEventListener('change', resetEdits);
+  });
+  [el.transparentOnly, el.mergeDiagonal, el.previewBg, el.showSource, el.useTransformScale, el.previewWidth, el.previewHeight, el.imageX, el.imageY, el.imageScale, el.imageScaleNum, el.eraserSize, el.eraserSizeNum, el.fps, el.duration].forEach(function (control) {
+    control.addEventListener('input', scheduleUpdate);
+    control.addEventListener('change', scheduleUpdate);
+  });
+  el.editTool.addEventListener('change', function () { if (state.previewData) drawPreview(state.previewData); });
+  el.eraserEnabled.addEventListener('change', function () { if (state.previewData) drawPreview(state.previewData); });
+
+  function pointerCell(evt) {
+    if (!state.previewData) return null;
+    var rect = el.preview.getBoundingClientRect();
+    var x = (evt.clientX - rect.left) * (el.preview.width / rect.width);
+    var y = (evt.clientY - rect.top) * (el.preview.height / rect.height);
+    return { col: Math.floor(x / state.previewData.cell), row: Math.floor(y / state.previewData.cell) };
+  }
+
+  function editAtEvent(evt) {
+    if (!el.eraserEnabled.checked || !state.previewData) return;
+    var pos = pointerCell(evt);
+    if (!pos) return;
+    state.pointer.visible = true;
+    state.pointer.col = pos.col;
+    state.pointer.row = pos.row;
+    var size = options().eraserSize;
+    var half = Math.floor(size / 2);
+    var value = el.editTool.value === 'draw' ? 1 : 0;
+    ensureEraseMask(state.previewData);
+    var changed = [];
+    for (var r = pos.row - half; r < pos.row - half + size; r++) {
+      for (var c = pos.col - half; c < pos.col - half + size; c++) {
+        if (r >= 0 && r < state.previewData.rows && c >= 0 && c < state.previewData.cols && state.eraseMask[r][c] !== value) {
+          changed.push([r, c, state.eraseMask[r][c]]);
+          state.eraseMask[r][c] = value;
+        }
+      }
+    }
+    if (changed.length) {
+      state.eraseHistory.push(changed);
+      scheduleUpdate();
+    } else {
+      drawPreview(state.previewData);
+    }
+  }
+
+  el.preview.addEventListener('pointerdown', function (evt) {
+    el.preview.setPointerCapture(evt.pointerId);
+    if (el.eraserEnabled.checked) {
+      editAtEvent(evt);
+      return;
+    }
+    if (state.image) {
+      state.dragImage = {
+        pointerId: evt.pointerId,
+        startClientX: evt.clientX,
+        startClientY: evt.clientY,
+        startX: parseFloat(el.imageX.value) || 0,
+        startY: parseFloat(el.imageY.value) || 0
+      };
+    }
+  });
+  el.preview.addEventListener('pointermove', function (evt) {
+    if (state.dragImage && state.dragImage.pointerId === evt.pointerId && !el.eraserEnabled.checked) {
+      var rect = el.preview.getBoundingClientRect();
+      var scaleX = el.preview.width / rect.width;
+      var scaleY = el.preview.height / rect.height;
+      el.imageX.value = Math.round(state.dragImage.startX + (evt.clientX - state.dragImage.startClientX) * scaleX);
+      el.imageY.value = Math.round(state.dragImage.startY + (evt.clientY - state.dragImage.startClientY) * scaleY);
+      resetEdits();
+      scheduleUpdate();
+      return;
+    }
+    var pos = pointerCell(evt);
+    if (pos) {
+      state.pointer.visible = true;
+      state.pointer.col = pos.col;
+      state.pointer.row = pos.row;
+      if (state.previewData) drawPreview(state.previewData);
+    }
+    if (evt.buttons) editAtEvent(evt);
+  });
+  el.preview.addEventListener('pointerup', function (evt) {
+    if (state.dragImage && state.dragImage.pointerId === evt.pointerId) state.dragImage = null;
+  });
+  el.preview.addEventListener('pointerleave', function () {
+    state.pointer.visible = false;
+    if (!state.dragImage && state.previewData) drawPreview(state.previewData);
+  });
+
+  el.undoErase.addEventListener('click', function () {
+    var changed = state.eraseHistory.pop();
+    if (changed && state.eraseMask) {
+      changed.forEach(function (cell) { state.eraseMask[cell[0]][cell[1]] = cell[2]; });
+      scheduleUpdate();
+    }
+  });
+  el.clearErase.addEventListener('click', function () {
+    resetEdits();
+    scheduleUpdate();
+  });
+
+  el.file.addEventListener('change', function () {
+    if (el.file.files && el.file.files[0]) loadImage(el.file.files[0]);
+  });
+  el.downloadJson.addEventListener('click', function () {
+    if (state.lottieText) downloadBlob(new Blob([state.lottieText], { type: 'application/json' }), state.imageName + '_afterdither.json');
+  });
+  el.downloadTgs.addEventListener('click', function () {
+    if (state.tgsBlob) downloadBlob(state.tgsBlob, state.imageName + '_afterdither.tgs');
+  });
+  el.copyAeJsx.addEventListener('click', function () {
+    if (!state.aeJsxText || !navigator.clipboard) return;
+    navigator.clipboard.writeText(state.aeJsxText).then(function () {
+      el.note.textContent = 'AE JSX скопирован. В After Effects: File > Scripts > Run Script File или вставь в ExtendScript runner.';
+    });
+  });
+  el.downloadAeJsx.addEventListener('click', function () {
+    if (state.aeJsxText) downloadBlob(new Blob([state.aeJsxText], { type: 'text/javascript' }), state.imageName + '_afterdither_ae.jsx');
+  });
+}());
+</script>
+</body>
+</html>
